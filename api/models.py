@@ -10,6 +10,9 @@ class Coupon(db.Model):
     hotel = db.Column(db.String(100), nullable=False)
     room = db.Column(db.String(100))
     price = db.Column(db.Float)
+    market_price = db.Column(db.Float)  # 市场价（通过WR平台查询3个随机日期均值）
+    internal_price = db.Column(db.Float)  # 内部价（市场价×20%取整到xx88/xx99）
+    currency = db.Column(db.String(10))  # 价格货币（如 HKD, CNY, SGD）
     expire = db.Column(db.String(20), nullable=False)  # YYYY-MM-DD格式
     code = db.Column(db.String(50), unique=True, nullable=False)
     activity = db.Column(db.String(200))
@@ -29,6 +32,9 @@ class Coupon(db.Model):
             'hotel': self.hotel,
             'room': self.room,
             'price': float(self.price) if self.price else None,
+            'market_price': float(self.market_price) if self.market_price else None,
+            'internal_price': float(self.internal_price) if self.internal_price else None,
+            'currency': self.currency,
             'expire': self.expire,
             'code': self.code,
             'activity': self.activity,

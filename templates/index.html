@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>公司活动房券管理系统</title>
+    <title>WR房券管理系统</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
     <script>
@@ -57,9 +57,15 @@
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
                     <i class="fa fa-building text-primary text-2xl mr-2"></i>
-                    <h1 class="text-xl font-bold text-gray-800">房券管理系统</h1>
+                    <h1 class="text-xl font-bold text-gray-800">WR房券管理系统</h1>
                 </div>
                 <div class="flex items-center space-x-4">
+                    <select id="currencySelect" class="text-sm border border-gray-300 rounded-lg px-2 py-2 bg-white focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <option value="CNY">¥ CNY</option>
+                        <option value="HKD">HK$ HKD</option>
+                        <option value="SGD">S$ SGD</option>
+                        <option value="USD">$ USD</option>
+                    </select>
                     <button id="btnStatistics" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors">
                         <i class="fa fa-bar-chart mr-1"></i> 统计
                     </button>
@@ -71,14 +77,18 @@
         </div>
     </nav>
 
+    <!-- v2.5 data-coupon-id + couponMap -->
+
     <!-- 主内容区 -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- 搜索栏 -->
         <div class="bg-white rounded-lg shadow-md p-4 mb-6">
             <div class="flex flex-col md:flex-row gap-4">
-                <div class="flex-1">
+                <div class="flex-1 relative">
                     <input type="text" id="searchInput" placeholder="搜索酒店名称、券码、活动、获得者..."
+                           autocomplete="off"
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <div id="autocompleteDropdown" class="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 hidden max-h-60 overflow-y-auto"></div>
                 </div>
                 <button id="btnSearch" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors whitespace-nowrap">
                     <i class="fa fa-search mr-1"></i> 搜索
@@ -213,14 +223,19 @@
         // 全局变量
         let coupons = [];
         let filteredCoupons = [];
+        let couponMap = {};  // 按ID索引，避免HTML属性传参问题
+        let exchangeRates = [];
+        let displayCurrency = localStorage.getItem('couponCurrency') || 'CNY';
 
         // API基础URL
         const API_BASE_URL = '/api';
 
         // DOM加载完成后执行
-        document.addEventListener('DOMContentLoaded', function() {
-            loadCoupons();
+        document.addEventListener('DOMContentLoaded', async function() {
+            await loadExchangeRates();
+            await loadCoupons();
             bindEvents();
+            document.getElementById('currencySelect').value = displayCurrency;
         });
 
         // 绑定事件
@@ -230,6 +245,32 @@
             document.getElementById('btnClearSearch').addEventListener('click', clearSearch);
             document.getElementById('searchInput').addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const dropdown = document.getElementById('autocompleteDropdown');
+                    const active = dropdown.querySelector('.suggestion-item.bg-blue-100');
+                    if (active && !dropdown.classList.contains('hidden')) {
+                        this.value = active.dataset.value;
+                        hideSuggestions();
+                    }
+                    searchCoupons();
+                }
+            });
+
+            // Autocomplete events
+            document.getElementById('searchInput').addEventListener('input', function(e) {
+                showSuggestions(this.value);
+            });
+            document.getElementById('searchInput').addEventListener('focus', function(e) {
+                showSuggestions(this.value);
+            });
+            document.getElementById('searchInput').addEventListener('blur', function() {
+                setTimeout(hideSuggestions, 200);
+            });
+            document.getElementById('autocompleteDropdown').addEventListener('click', function(e) {
+                const item = e.target.closest('.suggestion-item');
+                if (item) {
+                    document.getElementById('searchInput').value = item.dataset.value;
+                    hideSuggestions();
                     searchCoupons();
                 }
             });
@@ -247,6 +288,24 @@
             // 详情相关
             document.getElementById('closeDetail').addEventListener('click', hideDetail);
 
+            // 查询市场价按钮
+            document.getElementById('couponDetail').addEventListener('click', function(e) {
+                const btn = e.target.closest('[data-action="queryPrice"]');
+                if (!btn) return;
+                const cid = parseInt(btn.dataset.couponId);
+                const c = couponMap[cid];
+                if (c) {
+                    queryMarketPrice(c.id, c.hotel, c.nights || 1, c.expire, c.wr_hotel_id || '');
+                }
+            });
+
+            // 货币选择
+            document.getElementById('currencySelect').addEventListener('change', function(e) {
+                displayCurrency = e.target.value;
+                localStorage.setItem('couponCurrency', displayCurrency);
+                renderCouponList();
+            });
+
             // 点击弹窗外部关闭弹窗
             document.getElementById('statisticsModal').addEventListener('click', function(e) {
                 if (e.target === this) hideStatistics();
@@ -259,6 +318,55 @@
             });
         }
 
+        // 全局查价函数（供 onclick 直接调用，避免 HTML 转义问题）
+        window.queryCouponPrice = function(couponId) {
+            const c = couponMap[couponId];
+            console.log('queryCouponPrice id=' + couponId, 'couponMap entry:', c);
+            if (c) {
+                queryMarketPrice(c.id, c.hotel, c.nights || 1, c.expire, c.wr_hotel_id || '');
+            } else {
+                console.error('Coupon not found in map:', couponId, Object.keys(couponMap));
+            }
+        };
+
+        // ===== 货币转换 =====
+        async function loadExchangeRates() {
+            try {
+                const resp = await fetch(`${API_BASE_URL}/exchange-rates`);
+                const data = await resp.json();
+                if (data.success) exchangeRates = data.data;
+            } catch(e) { console.error('rates load failed:', e); }
+        }
+
+        function convertPrice(price, fromCurrency, toCurrency) {
+            if (!price || !fromCurrency || fromCurrency === toCurrency) return price;
+            // rateData = 1 transCur 等于多少 baseCur
+            // 正向: baseCur=from, transCur=to → price / rateData
+            for (const r of exchangeRates) {
+                if (r.baseCur === fromCurrency && r.transCur === toCurrency) {
+                    return price / r.rateData;
+                }
+            }
+            // 反向: baseCur=to, transCur=from → price * rateData
+            for (const r of exchangeRates) {
+                if (r.baseCur === toCurrency && r.transCur === fromCurrency) {
+                    return price * r.rateData;
+                }
+            }
+            return price;
+        }
+
+        function getCurrencySymbol(cur) {
+            const m = { CNY: '¥', HKD: 'HK$', SGD: 'S$', USD: '$' };
+            return m[cur] || cur;
+        }
+
+        function formatDisplayPrice(price, fromCurrency) {
+            if (!price) return 'N/A';
+            const converted = convertPrice(price, fromCurrency || 'HKD', displayCurrency);
+            return `${getCurrencySymbol(displayCurrency)} ${Math.round(converted).toLocaleString()}`;
+        }
+
         // 加载房券列表
         async function loadCoupons() {
             showLoading();
@@ -269,6 +377,9 @@
                 if (data.success) {
                     coupons = data.data;
                     filteredCoupons = [...coupons];
+                    couponMap = {};
+                    coupons.forEach(c => couponMap[c.id] = c);
+                    buildAutocompleteList();
                     renderCouponList();
                 } else {
                     showToast('error', '加载失败', data.message || '获取房券列表失败');
@@ -317,16 +428,20 @@
                         <img src="${coupon.image_url}" alt="房券图片" class="w-full object-cover" style="max-height:160px;">
                     </div>` : ''}
                     <div class="flex justify-between items-start mb-4">
-                        <h3 class="text-lg font-bold text-gray-800" style="max-width:80%; word-break:break-word;">${coupon.hotel}</h3>
+                        <div style="max-width:80%">
+                            <h3 class="text-lg font-bold text-gray-800" style="word-break:break-word;">${coupon.hotel}</h3>
+                            ${(coupon.wr_hotel_chain && coupon.wr_hotel_code) ? `<span class="text-xs text-gray-400">${coupon.wr_hotel_chain}.${coupon.wr_hotel_code}</span>` : ''}
+                        </div>
                         <span class="status-badge status-${getStatusClass(coupon.status)} flex-shrink-0 ml-2">${coupon.status}</span>
                     </div>
                     <div class="space-y-2 text-sm text-gray-600">
-                        <p><i class="fa fa-bed mr-2 text-gray-400"></i>${coupon.room || '标准间'}</p>
-                        <p><i class="fa fa-moon-o mr-2 text-gray-400"></i>${coupon.nights || 1}晚</p>
-                        <p><i class="fa fa-money mr-2 text-gray-400"></i>¥${coupon.price || 'N/A'}</p>
-                        <p><i class="fa fa-calendar mr-2 text-gray-400"></i>有效期至: ${coupon.expire}</p>
-                        <p><i class="fa fa-ticket mr-2 text-gray-400"></i>券码: ${coupon.code}</p>
-                        ${coupon.recipient ? `<p><i class="fa fa-user mr-2 text-gray-400"></i>获得者: ${coupon.recipient}</p>` : ''}
+                        <p><span class="inline-block w-5 text-center">🛏️</span> ${coupon.room || '标准间'}</p>
+                        <p><span class="inline-block w-5 text-center">🌙</span> ${coupon.nights || 1}晚</p>
+                        ${coupon.market_price ? `<p><span class="inline-block w-5 text-center">📊</span> <span class="text-red-500 line-through">${formatDisplayPrice(coupon.market_price, coupon.currency)}</span></p>` : `<p><span class="inline-block w-5 text-center">💰</span> ¥${coupon.price || 'N/A'}</p>`}
+                        ${coupon.internal_price ? `<p><span class="inline-block w-5 text-center">🏷️</span> <span class="text-green-600 font-semibold">${formatDisplayPrice(coupon.internal_price, coupon.currency)}</span></p>` : ''}
+                        <p><span class="inline-block w-5 text-center">📅</span> 有效期至: ${coupon.expire}</p>
+                        <p><span class="inline-block w-5 text-center">🎫</span> 券码: ${coupon.code}</p>
+                        ${coupon.recipient ? `<p><span class="inline-block w-5 text-center">👤</span> ${coupon.recipient}</p>` : ''}
                     </div>
                     ${coupon.activity ? `<div class="mt-4 pt-4 border-t border-gray-100">
                         <p class="text-xs text-gray-500"><i class="fa fa-tag mr-1"></i>活动: ${coupon.activity}</p>
@@ -345,6 +460,51 @@
                 case '已过期': return 'expired';
                 default: return 'used';
             }
+        }
+
+        // ===== Autocomplete功能 =====
+        let autocompleteItems = [];
+
+        function buildAutocompleteList() {
+            const seen = new Set();
+            autocompleteItems = [];
+            coupons.forEach(c => {
+                const values = [c.hotel, c.code, c.recipient, c.activity, c.room].filter(v => v && v.trim());
+                values.forEach(v => {
+                    if (!seen.has(v)) {
+                        seen.add(v);
+                        autocompleteItems.push({ text: v, type: typeof v === 'string' && v.startsWith(c.hotel.substring(0,2)) ? '酒店' : '其他' });
+                    }
+                });
+            });
+        }
+
+        function showSuggestions(filter) {
+            const dropdown = document.getElementById('autocompleteDropdown');
+            if (!filter || filter.length < 1) {
+                dropdown.classList.add('hidden');
+                return;
+            }
+            const q = filter.toLowerCase();
+            const matches = autocompleteItems.filter(item => item.text.toLowerCase().includes(q)).slice(0, 8);
+
+            if (matches.length === 0) {
+                dropdown.classList.add('hidden');
+                return;
+            }
+
+            dropdown.innerHTML = matches.map((m, i) => `
+                <div class="suggestion-item px-4 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0 flex items-center gap-2" data-index="${i}" data-value="${m.text.replace(/"/g, '&quot;')}">
+                    <span class="text-xs px-1.5 py-0.5 rounded ${m.text.includes('C-') || m.text.match(/^[A-Z0-9]{4,}$/) ? 'bg-purple-100 text-purple-700' : m.text.length > 20 ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}">${m.text.includes('C-') || m.text.match(/^[A-Z0-9]{4,}$/) ? '券码' : m.text.length > 20 ? '酒店' : '姓名'}</span>
+                    <span class="text-sm text-gray-700 truncate">${m.text}</span>
+                </div>
+            `).join('');
+
+            dropdown.classList.remove('hidden');
+        }
+
+        function hideSuggestions() {
+            document.getElementById('autocompleteDropdown').classList.add('hidden');
         }
 
         // 搜索房券
@@ -486,10 +646,14 @@
                             <p class="font-medium">${coupon.nights || 1}晚</p>
                         </div>
                         <div>
-                            <p class="text-sm text-gray-500 mb-1">价值</p>
-                            <p class="font-medium">¥${coupon.price || 'N/A'}</p>
+                            <p class="text-sm text-gray-500 mb-1">市场价</p>
+                            <p class="font-medium text-red-500 line-through">${coupon.market_price ? formatDisplayPrice(coupon.market_price, coupon.currency) : (coupon.price ? '¥' + coupon.price : 'N/A')}</p>
                         </div>
                         <div>
+                            <p class="text-sm text-gray-500 mb-1">内部价</p>
+                            <p class="font-medium text-green-600">${coupon.internal_price ? formatDisplayPrice(coupon.internal_price, coupon.currency) : '未查询'}</p>
+                        </div>
+                        <div class="col-span-2">
                             <p class="text-sm text-gray-500 mb-1">有效期</p>
                             <p class="font-medium">${coupon.expire}</p>
                         </div>
@@ -517,6 +681,15 @@
                         <p class="text-sm text-gray-500 mb-1">备注</p>
                         <p class="text-gray-600">${coupon.remark}</p>
                     </div>` : ''}
+                    
+                    ${coupon.status === '未使用' ? `
+                    <div class="pt-4 border-t">
+                        <button onclick="event.stopPropagation();window.queryCouponPrice(${coupon.id})"
+                                class="w-full bg-blue-50 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors text-sm">
+                            <i class="fa fa-line-chart mr-1"></i>查询市场价
+                        </button>
+                        <p class="text-xs text-gray-400 mt-1 text-center" id="priceStatus${coupon.id}"></p>
+                    </div>` : ''}
                 </div>
             `;
             
@@ -526,6 +699,52 @@
         // 隐藏房券详情
         function hideDetail() {
             document.getElementById('detailModal').classList.add('hidden');
+        }
+
+        // 查询市场价
+        async function queryMarketPrice(id, hotel, nights, expire, hotelId) {
+            const statusEl = document.getElementById('priceStatus' + id);
+            if (!statusEl) return;
+            statusEl.textContent = '查询中...';
+            statusEl.className = 'text-xs text-blue-500 mt-1 text-center';
+            
+            try {
+                const body = { hotel, nights, expire };
+                if (hotelId) body.hotel_id = hotelId;
+                const response = await fetch(`${API_BASE_URL}/coupons/query-market-price`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 更新房券的市场价和内部价
+                    const updateResp = await fetch(`${API_BASE_URL}/coupons/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            market_price: data.data.market_price,
+                            internal_price: data.data.internal_price,
+                            currency: data.data.currency
+                        })
+                    });
+                    if ((await updateResp.json()).success) {
+                        const cur = data.data.currency || 'HKD';
+                        const disp = formatDisplayPrice(data.data.market_price, cur);
+                        statusEl.textContent = `市场价: ${disp} | 内部价: ${data.data.internal_price}`;
+                        statusEl.className = 'text-xs text-green-600 mt-1 text-center';
+                        // 刷新列表
+                        await loadCoupons();
+                    }
+                } else {
+                    statusEl.textContent = data.message || '查询失败';
+                    statusEl.className = 'text-xs text-red-500 mt-1 text-center';
+                }
+            } catch (error) {
+                statusEl.textContent = '网络错误';
+                statusEl.className = 'text-xs text-red-500 mt-1 text-center';
+            }
         }
 
         // 显示加载状态
