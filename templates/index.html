@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公司活动房券管理系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#64748b',
+                        success: '#22c55e',
+                        warning: '#f59e0b',
+                        danger: '#ef4444',
+                        info: '#0ea5e9'
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .glass {
+                background: rgba(255, 255, 255, 0.25);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255, 255, 255, 0.18);
+            }
+            .card-shadow {
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            }
+            .status-badge {
+                @apply px-2 py-1 rounded-full text-xs font-medium;
+            }
+            .status-unused {
+                @apply bg-green-100 text-green-800;
+            }
+            .status-used {
+                @apply bg-gray-100 text-gray-800;
+            }
+            .status-expired {
+                @apply bg-red-100 text-red-800;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 导航栏 -->
+    <nav class="bg-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <i class="fa fa-building text-primary text-2xl mr-2"></i>
+                    <h1 class="text-xl font-bold text-gray-800">房券管理系统</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="btnStatistics" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors">
+                        <i class="fa fa-bar-chart mr-1"></i> 统计
+                    </button>
+                    <button id="btnFilter" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors">
+                        <i class="fa fa-filter mr-1"></i> 筛选
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容区 -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- 搜索栏 -->
+        <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+            <div class="flex flex-col md:flex-row gap-4">
+                <div class="flex-1">
+                    <input type="text" id="searchInput" placeholder="搜索酒店名称、券码、活动、获得者..."
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <button id="btnSearch" class="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors whitespace-nowrap">
+                    <i class="fa fa-search mr-1"></i> 搜索
+                </button>
+                <button id="btnClearSearch" class="bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300 transition-colors whitespace-nowrap">
+                    <i class="fa fa-times mr-1"></i> 清空
+                </button>
+            </div>
+        </div>
+
+        <!-- 房券列表 -->
+        <div id="couponList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- 房券卡片将通过JavaScript动态生成 -->
+        </div>
+
+        <!-- 加载状态 -->
+        <div id="loading" class="hidden text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+            <p class="mt-4 text-gray-600">加载中...</p>
+        </div>
+
+        <!-- 空状态 -->
+        <div id="emptyState" class="hidden text-center py-12">
+            <i class="fa fa-inbox text-6xl text-gray-300 mb-4"></i>
+            <p class="text-gray-500 text-lg">暂无房券数据</p>
+        </div>
+    </main>
+
+    <!-- 统计弹窗 -->
+    <div id="statisticsModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4 card-shadow">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-800">房券统计</h3>
+                <button id="closeStatistics" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div class="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                    <span class="text-gray-700">总房券数</span>
+                    <span id="totalCount" class="text-2xl font-bold text-gray-800">0</span>
+                </div>
+                <div class="flex justify-between items-center p-4 bg-green-50 rounded-lg">
+                    <span class="text-gray-700">未使用</span>
+                    <span id="unusedCount" class="text-2xl font-bold text-green-600">0</span>
+                </div>
+                <div class="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                    <span class="text-gray-700">已使用</span>
+                    <span id="usedCount" class="text-2xl font-bold text-gray-600">0</span>
+                </div>
+                <div class="flex justify-between items-center p-4 bg-red-50 rounded-lg">
+                    <span class="text-gray-700">已过期</span>
+                    <span id="expiredCount" class="text-2xl font-bold text-red-600">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 筛选弹窗 -->
+    <div id="filterModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4 card-shadow">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-800">筛选条件</h3>
+                <button id="closeFilter" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            <form id="filterForm" class="space-y-4">
+                <div>
+                    <label class="block text-gray-700 mb-2">状态</label>
+                    <select id="filterStatus" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <option value="">全部</option>
+                        <option value="未使用">未使用</option>
+                        <option value="已使用">已使用</option>
+                        <option value="已过期">已过期</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-2">酒店名称</label>
+                    <input type="text" id="filterHotel" placeholder="请输入酒店名称" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-2">活动名称</label>
+                    <input type="text" id="filterActivity" placeholder="请输入活动名称" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-2">获得者</label>
+                    <input type="text" id="filterRecipient" placeholder="请输入获得者姓名" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div class="flex space-x-4 pt-4">
+                    <button type="submit" class="flex-1 bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors">
+                        应用筛选
+                    </button>
+                    <button type="button" id="resetFilter" class="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300 transition-colors">
+                        重置
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 房券详情弹窗 -->
+    <div id="detailModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-xl p-6 max-w-lg w-full mx-4 card-shadow">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-800">房券详情</h3>
+                <button id="closeDetail" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            <div id="couponDetail" class="space-y-4">
+                <!-- 详情内容将通过JavaScript动态生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast提示 -->
+    <div id="toast" class="fixed top-20 right-4 transform translate-x-full transition-transform duration-300 z-50">
+        <div class="bg-white rounded-lg shadow-lg p-4 flex items-center space-x-3 max-w-sm">
+            <div id="toastIcon"></div>
+            <div>
+                <p id="toastTitle" class="font-medium text-gray-900"></p>
+                <p id="toastMessage" class="text-sm text-gray-500"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let coupons = [];
+        let filteredCoupons = [];
+
+        // API基础URL
+        const API_BASE_URL = '/api';
+
+        // DOM加载完成后执行
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCoupons();
+            bindEvents();
+        });
+
+        // 绑定事件
+        function bindEvents() {
+            // 搜索相关
+            document.getElementById('btnSearch').addEventListener('click', searchCoupons);
+            document.getElementById('btnClearSearch').addEventListener('click', clearSearch);
+            document.getElementById('searchInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    searchCoupons();
+                }
+            });
+
+            // 统计相关
+            document.getElementById('btnStatistics').addEventListener('click', showStatistics);
+            document.getElementById('closeStatistics').addEventListener('click', hideStatistics);
+
+            // 筛选相关
+            document.getElementById('btnFilter').addEventListener('click', showFilter);
+            document.getElementById('closeFilter').addEventListener('click', hideFilter);
+            document.getElementById('filterForm').addEventListener('submit', applyFilter);
+            document.getElementById('resetFilter').addEventListener('click', resetFilter);
+
+            // 详情相关
+            document.getElementById('closeDetail').addEventListener('click', hideDetail);
+
+            // 点击弹窗外部关闭弹窗
+            document.getElementById('statisticsModal').addEventListener('click', function(e) {
+                if (e.target === this) hideStatistics();
+            });
+            document.getElementById('filterModal').addEventListener('click', function(e) {
+                if (e.target === this) hideFilter();
+            });
+            document.getElementById('detailModal').addEventListener('click', function(e) {
+                if (e.target === this) hideDetail();
+            });
+        }
+
+        // 加载房券列表
+        async function loadCoupons() {
+            showLoading();
+            try {
+                const response = await fetch(`${API_BASE_URL}/coupons`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    coupons = data.data;
+                    filteredCoupons = [...coupons];
+                    renderCouponList();
+                } else {
+                    showToast('error', '加载失败', data.message || '获取房券列表失败');
+                }
+            } catch (error) {
+                showToast('error', '加载失败', '网络错误，请稍后重试');
+                console.error('加载房券失败:', error);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 渲染房券列表
+        function renderCouponList() {
+            const container = document.getElementById('couponList');
+            container.innerHTML = '';
+
+            if (filteredCoupons.length === 0) {
+                showEmptyState();
+                return;
+            }
+
+            hideEmptyState();
+
+            filteredCoupons.forEach(coupon => {
+                const card = createCouponCard(coupon);
+                container.appendChild(card);
+            });
+        }
+
+        // 创建房券卡片
+        function createCouponCard(coupon) {
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow cursor-pointer';
+            card.onclick = () => showCouponDetail(coupon);
+
+            // 根据状态设置不同的边框颜色
+            let borderClass = '';
+            if (coupon.status === '未使用') borderClass = 'border-l-4 border-green-500';
+            else if (coupon.status === '已使用') borderClass = 'border-l-4 border-gray-400';
+            else if (coupon.status === '已过期') borderClass = 'border-l-4 border-red-500';
+
+            card.innerHTML = `
+                <div class="p-6 ${borderClass}">
+                    ${coupon.image_url ? `<div class="mb-3 rounded-lg overflow-hidden" style="max-height:160px;">
+                        <img src="${coupon.image_url}" alt="房券图片" class="w-full object-cover" style="max-height:160px;">
+                    </div>` : ''}
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-lg font-bold text-gray-800" style="max-width:80%; word-break:break-word;">${coupon.hotel}</h3>
+                        <span class="status-badge status-${getStatusClass(coupon.status)} flex-shrink-0 ml-2">${coupon.status}</span>
+                    </div>
+                    <div class="space-y-2 text-sm text-gray-600">
+                        <p><i class="fa fa-bed mr-2 text-gray-400"></i>${coupon.room || '标准间'}</p>
+                        <p><i class="fa fa-moon-o mr-2 text-gray-400"></i>${coupon.nights || 1}晚</p>
+                        <p><i class="fa fa-money mr-2 text-gray-400"></i>¥${coupon.price || 'N/A'}</p>
+                        <p><i class="fa fa-calendar mr-2 text-gray-400"></i>有效期至: ${coupon.expire}</p>
+                        <p><i class="fa fa-ticket mr-2 text-gray-400"></i>券码: ${coupon.code}</p>
+                        ${coupon.recipient ? `<p><i class="fa fa-user mr-2 text-gray-400"></i>获得者: ${coupon.recipient}</p>` : ''}
+                    </div>
+                    ${coupon.activity ? `<div class="mt-4 pt-4 border-t border-gray-100">
+                        <p class="text-xs text-gray-500"><i class="fa fa-tag mr-1"></i>活动: ${coupon.activity}</p>
+                    </div>` : ''}
+                </div>
+            `;
+
+            return card;
+        }
+
+        // 获取状态对应的CSS类名
+        function getStatusClass(status) {
+            switch (status) {
+                case '未使用': return 'unused';
+                case '已使用': return 'used';
+                case '已过期': return 'expired';
+                default: return 'used';
+            }
+        }
+
+        // 搜索房券
+        async function searchCoupons() {
+            const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+
+            // 空搜索时刷新列表
+            if (!searchTerm) {
+                await loadCoupons();
+                return;
+            }
+
+            // 模糊匹配搜索
+            filteredCoupons = coupons.filter(coupon =>
+                coupon.hotel.toLowerCase().includes(searchTerm) ||
+                coupon.code.toLowerCase().includes(searchTerm) ||
+                (coupon.activity && coupon.activity.toLowerCase().includes(searchTerm)) ||
+                (coupon.room && coupon.room.toLowerCase().includes(searchTerm)) ||
+                (coupon.recipient && coupon.recipient.toLowerCase().includes(searchTerm)) ||
+                (coupon.wr_hotel_id && coupon.wr_hotel_id.toLowerCase().includes(searchTerm)) ||
+                (coupon.wr_hotel_chain && coupon.wr_hotel_chain.toLowerCase().includes(searchTerm)) ||
+                (coupon.wr_hotel_code && coupon.wr_hotel_code.toLowerCase().includes(searchTerm))
+            );
+
+            renderCouponList();
+        }
+
+        // 清空搜索
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            filteredCoupons = [...coupons];
+            renderCouponList();
+        }
+
+        // 显示统计
+        async function showStatistics() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/statistics`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('totalCount').textContent = data.data.total;
+                    document.getElementById('unusedCount').textContent = data.data.unused;
+                    document.getElementById('usedCount').textContent = data.data.used;
+                    document.getElementById('expiredCount').textContent = data.data.expired;
+                    
+                    document.getElementById('statisticsModal').classList.remove('hidden');
+                } else {
+                    showToast('error', '获取失败', data.message || '获取统计数据失败');
+                }
+            } catch (error) {
+                showToast('error', '获取失败', '网络错误，请稍后重试');
+                console.error('获取统计数据失败:', error);
+            }
+        }
+
+        // 隐藏统计
+        function hideStatistics() {
+            document.getElementById('statisticsModal').classList.add('hidden');
+        }
+
+        // 显示筛选
+        function showFilter() {
+            document.getElementById('filterModal').classList.remove('hidden');
+        }
+
+        // 隐藏筛选
+        function hideFilter() {
+            document.getElementById('filterModal').classList.add('hidden');
+        }
+
+        // 应用筛选
+        async function applyFilter(e) {
+            e.preventDefault();
+            
+            const status = document.getElementById('filterStatus').value;
+            const hotel = document.getElementById('filterHotel').value.trim();
+            const activity = document.getElementById('filterActivity').value.trim();
+            const recipient = document.getElementById('filterRecipient').value.trim();
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/coupons/filter`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        status: status || undefined,
+                        hotel: hotel || undefined,
+                        activity: activity || undefined,
+                        recipient: recipient || undefined
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    filteredCoupons = data.data;
+                    renderCouponList();
+                    hideFilter();
+                } else {
+                    showToast('error', '筛选失败', data.message || '筛选房券失败');
+                }
+            } catch (error) {
+                showToast('error', '筛选失败', '网络错误，请稍后重试');
+                console.error('筛选房券失败:', error);
+            }
+        }
+
+        // 重置筛选
+        function resetFilter() {
+            document.getElementById('filterStatus').value = '';
+            document.getElementById('filterHotel').value = '';
+            document.getElementById('filterActivity').value = '';
+            document.getElementById('filterRecipient').value = '';
+        }
+
+        // 显示房券详情
+        function showCouponDetail(coupon) {
+            const detailContainer = document.getElementById('couponDetail');
+            
+            detailContainer.innerHTML = `
+                <div class="space-y-4">
+                    ${coupon.image_url ? `<div class="rounded-lg overflow-hidden">
+                        <img src="${coupon.image_url}" alt="房券图片" class="w-full object-cover rounded-lg" style="max-height:240px;">
+                    </div>` : ''}
+                    <div class="flex justify-between items-center">
+                        <h4 class="text-lg font-bold text-gray-800" style="max-width:80%; word-break:break-word;">${coupon.hotel}</h4>
+                        <span class="status-badge status-${getStatusClass(coupon.status)} flex-shrink-0 ml-2">${coupon.status}</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-sm text-gray-500 mb-1">房型</p>
+                            <p class="font-medium">${coupon.room || '标准间'}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500 mb-1">晚数</p>
+                            <p class="font-medium">${coupon.nights || 1}晚</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500 mb-1">价值</p>
+                            <p class="font-medium">¥${coupon.price || 'N/A'}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500 mb-1">有效期</p>
+                            <p class="font-medium">${coupon.expire}</p>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <p class="text-sm text-gray-500 mb-1">券码</p>
+                        <p class="font-mono bg-gray-50 p-2 rounded font-medium">${coupon.code}</p>
+                    </div>
+                    
+                    ${coupon.activity ? `
+                    <div>
+                        <p class="text-sm text-gray-500 mb-1">活动来源</p>
+                        <p class="font-medium">${coupon.activity}</p>
+                    </div>` : ''}
+                    
+                    ${coupon.recipient ? `
+                    <div>
+                        <p class="text-sm text-gray-500 mb-1">获得者</p>
+                        <p class="font-medium"><i class="fa fa-user mr-1 text-gray-400"></i>${coupon.recipient}</p>
+                    </div>` : ''}
+                    
+                    ${coupon.remark ? `
+                    <div>
+                        <p class="text-sm text-gray-500 mb-1">备注</p>
+                        <p class="text-gray-600">${coupon.remark}</p>
+                    </div>` : ''}
+                </div>
+            `;
+            
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
+
+        // 隐藏房券详情
+        function hideDetail() {
+            document.getElementById('detailModal').classList.add('hidden');
+        }
+
+        // 显示加载状态
+        function showLoading() {
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('couponList').classList.add('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+        }
+
+        // 隐藏加载状态
+        function hideLoading() {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('couponList').classList.remove('hidden');
+        }
+
+        // 显示空状态
+        function showEmptyState() {
+            document.getElementById('emptyState').classList.remove('hidden');
+            document.getElementById('couponList').classList.add('hidden');
+        }
+
+        // 隐藏空状态
+        function hideEmptyState() {
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('couponList').classList.remove('hidden');
+        }
+
+        // 显示Toast提示
+        function showToast(type, title, message) {
+            const toast = document.getElementById('toast');
+            const toastIcon = document.getElementById('toastIcon');
+            const toastTitle = document.getElementById('toastTitle');
+            const toastMessage = document.getElementById('toastMessage');
+            
+            // 设置图标和颜色
+            if (type === 'success') {
+                toastIcon.innerHTML = '<i class="fa fa-check-circle text-green-500 text-xl"></i>';
+            } else if (type === 'error') {
+                toastIcon.innerHTML = '<i class="fa fa-exclamation-circle text-red-500 text-xl"></i>';
+            } else if (type === 'warning') {
+                toastIcon.innerHTML = '<i class="fa fa-exclamation-triangle text-yellow-500 text-xl"></i>';
+            } else {
+                toastIcon.innerHTML = '<i class="fa fa-info-circle text-blue-500 text-xl"></i>';
+            }
+            
+            toastTitle.textContent = title;
+            toastMessage.textContent = message;
+            
+            // 显示Toast
+            toast.classList.remove('translate-x-full');
+            
+            // 3秒后自动隐藏
+            setTimeout(() => {
+                toast.classList.add('translate-x-full');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
